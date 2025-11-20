@@ -1,12 +1,14 @@
 """
 End-to-end training script for the Network Intrusion Detection System (IDS).
 
+What it does:
 - Loads dataset from data/dataset_clean.csv (or data/dataset.csv as fallback)
-- Performs basic preprocessing (drop NAs, encode categoricals)
+- Automatically detects a sensible target/label column
+- Preprocesses data (drop NAs, encode categoricals)
 - Splits into train/test sets
 - Trains a RandomForestClassifier
-- Prints accuracy + classification report
-- Saves trained model to models/intrusion_model.pkl
+- Prints accuracy, classification report, and confusion matrix
+- Saves the trained model to models/intrusion_model.pkl
 """
 
 import os
@@ -32,22 +34,61 @@ def load_dataset():
         print(f"[INFO] Loading raw dataset: {raw_path}")
         df = pd.read_csv(raw_path)
     else:
-        raise FileNotFoundError("No dataset found in data/ (expected dataset_clean.csv or dataset.csv).")
+        raise FileNotFoundError(
+            "No dataset found in data/ (expected dataset_clean.csv or dataset.csv)."
+        )
 
     print(f"[INFO] Dataset shape: {df.shape}")
+    print(f"[INFO] Columns: {list(df.columns)}")
     return df
 
 
-# ---------- 2. Preprocess ----------
+# ---------- 2. Detect target column automatically ----------
 
-def preprocess(df, target_column="label"):
+def detect_target_column(df):
     """
-    Assumes there is a target column called `label`.
-    Change target_column if your target name is different.
+    Try to guess the target column from common names.
+    If none match, fall back to using the last column.
     """
+
+    candidates = [
+        "label",
+        "target",
+        "class",
+        "attack_type",
+        "intrusion",
+        "is_attack",
+        "y",
+    ]
+
+    lower_map = {c.lower(): c for c in df.columns}
+
+    for cand in candidates:
+        if cand in lower_map:
+            target = lower_map[cand]
+            print(f"[INFO] Auto-detected target column: '{target}'")
+            return target
+
+    # Fallback: last column
+    target = df.columns[-1]
+    print(
+        f"[WARN] Could not find a standard label column, "
+        f"falling back to last column: '{target}'"
+    )
+    return target
+
+
+# ---------- 3. Preprocess ----------
+
+def preprocess(df, target_column=None):
+    if target_column is None:
+        target_column = detect_target_column(df)
 
     if target_column not in df.columns:
-        raise ValueError(f"Target column '{target_column}' not found. Columns: {list(df.columns)}")
+        raise ValueError(
+            f"Target column '{target_column}' not found. "
+            f"Available columns: {list(df.columns)}"
+        )
 
     # Separate features and target
     y = df[target_column]
@@ -65,10 +106,10 @@ def preprocess(df, target_column="label"):
     X = pd.get_dummies(X)
 
     print(f"[INFO] Features shape after encoding: {X.shape}")
-    return X, y
+    return X, y, target_column
 
 
-# ---------- 3. Train / Evaluate / Save ----------
+# ---------- 4. Train / Evaluate / Save ----------
 
 def train_and_evaluate(X, y):
     # Split data
@@ -83,7 +124,7 @@ def train_and_evaluate(X, y):
         n_estimators=200,
         max_depth=None,
         random_state=42,
-        n_jobs=-1
+        n_jobs=-1,
     )
 
     print("[INFO] Training RandomForest model...")
@@ -111,7 +152,8 @@ def train_and_evaluate(X, y):
 
 def main():
     df = load_dataset()
-    X, y = preprocess(df, target_column="label")  # change if your target column has a different name
+    X, y, target_col = preprocess(df)
+    print(f"[INFO] Using target column: '{target_col}'")
     train_and_evaluate(X, y)
 
 
