@@ -1,151 +1,157 @@
-# Machine Learning–Based Network Intrusion Detection System (IDS)
+# Machine Learning–Based Intrusion Detection System (IDS)
 
-A complete Machine Learning Intrusion Detection System built using the NSL-KDD dataset. The system includes preprocessing, feature engineering, model training, evaluation, ROC curve, FastAPI prediction API, Docker deployment, unit tests, architecture diagrams, and a dashboard for intrusion analysis.
+This repository contains a complete Machine Learning–driven Intrusion Detection System (IDS) built using the NSL-KDD dataset. It includes preprocessing, model training, evaluation, ROC curve, a FastAPI prediction service, Docker deployment, testing suite, architecture diagrams, and a dashboard interface.
 
-This project is part of the UK Global Talent Visa evidence as a technical contribution in Machine Learning and Cybersecurity.
-
----
-
-## Project Overview
-
-This IDS uses machine learning to detect malicious network traffic by learning behavioural patterns from the NSL-KDD dataset.
-
-Key features:
-- End-to-end ML pipeline
-- Preprocessing and feature engineering
-- Random Forest classification model
-- Saved model artifacts
-- FastAPI real-time prediction service
-- Docker-based deployment
-- Dashboard for intrusion exploration
-- Unit tests and CI workflow
+This project demonstrates end-to-end engineering capability across data engineering, machine learning, cybersecurity analytics, API deployment, testing, and documentation. It forms part of the technical evidence submitted for the UK Global Talent Visa (Digital Technology).
 
 ---
 
-## Features
+## 1. Project Overview
 
-### 1. Data Pipeline
-- Cleaned NSL-KDD dataset
-- Encoded categorical features
-- Train/test split
-- Feature scaling
+The IDS identifies whether a network connection is normal or malicious by learning patterns from the NSL-KDD intrusion dataset. The system includes:
 
-### 2. ML Model
+- Full preprocessing and feature engineering
+- Random Forest intrusion classifier
+- Saved model artifact (intrusion_model.pkl)
+- FastAPI inference service
+- Interactive dashboard for CSV intrusion analysis
+- ROC-AUC evaluation
+- Docker deployment
+- Pytest unit tests
+- GitHub Actions CI
+
+---
+
+## 2. Features
+
+### 2.1 Data Pipeline
+- Cleans training and test datasets
+- Encodes categorical fields
+- Standardises numeric features
+- Ensures consistent preprocessing between training and inference
+
+### 2.2 Machine Learning Model
 - Random Forest classifier
-- Evaluation metrics: precision, recall, F1-score
-- ROC curve and AUC report
+- High recall for attack detection
+- ROC-AUC score of 0.961
+- Reproducible training script: `train_ids_pipeline.py`
 
-### 3. API Service
-- FastAPI-based inference endpoint
-- Pydantic validation
-- JSON input/output
+### 2.3 FastAPI Service
+-  `/predict` endpoint
+- Validates JSON inputs
+- Loads saved intrusion model
+- Returns class and probability score
 
-### 4. Dashboard
-- Real-time prediction
+### 2.4 Dashboard Application
 - CSV upload
-- Visual results
+- Batch predictions
+- Attack distribution visualisation
 
-### 5. Testing
-- Pytest test suite
-- Model loading tests
-- Preprocessing tests
-- Prediction tests
-
-### 6. Deployment
+### 2.5 Deployment
 - Dockerfile
 - docker-compose.yml
-- Uvicorn server
+- Uvicorn production server
+
+### 2.6 Testing and CI
+- Pytest suite
+- Tests for preprocessing, model loading, prediction pipeline
+- GitHub Actions CI pipeline
 
 ---
 
-## Repository Structure
+## 3. Repository Structure
 
-    ├── data/
-    │   ├── nsl_kdd_train_binary.csv
-    │   ├── nsl_kdd_test_binary.csv
-    │   └── intrusion_model.pkl
-    ├── docs/
-    │   └── figures/
-    │       ├── ids_architecture.png
-    │       ├── ids_dashboard.png
-    │       ├── ids_pipeline.png
-    │       └── roc_curve.png
-    ├── notebooks/
-    │   └── exploration_intrusion_ids.ipynb
-    ├── src/
-    │   ├── train_ids_pipeline.py
-    │   ├── dashboard_app.py
-    │   └── api_main.py
-    ├── tests/
-    │   ├── test_preprocessing.py
-    │   ├── test_model_loading.py
-    │   └── test_prediction.py
-    ├── MODEL_CARD.md
-    ├── TECH_NATION_EVIDENCE.md
-    ├── Dockerfile
-    ├── docker-compose.yml
-    ├── requirements.txt
-    └── README.md
-
----
-
-## Installation & Usage
-
-### 1. Clone the repository
-    git clone https://github.com/akinyeraakintunde/network-intrusion-detection-ml.git
-    cd network-intrusion-detection-ml
-
-### 2. Install dependencies
-    pip install -r requirements.txt
-
-### 3. Train model
-    python src/train_ids_pipeline.py
-
-### 4. Run API
-    uvicorn src.api_main:app --reload --port 8000
-
-### 5. Run Dashboard
-    python src/dashboard_app.py
-
-### 6. Run Tests
-    pytest
+```
+├── data/
+│   ├── nsl_kdd_train_binary.csv
+│   ├── nsl_kdd_test_binary.csv
+│   └── intrusion_model.pkl
+├── docs/
+│   └── figures/
+│       ├── ids_architecture.png
+│       ├── ids_pipeline.png
+│       ├── ids_dashboard.png
+│       └── roc_curve.png
+├── src/
+│   ├── api_main.py
+│   ├── train_ids_pipeline.py
+│   └── dashboard_app.py
+├── tests/
+│   ├── test_preprocessing.py
+│   ├── test_model_loading.py
+│   └── test_prediction.py
+├── MODEL_CARD.md
+├── TECH_NATION_EVIDENCE.md
+├── Dockerfile
+├── docker-compose.yml
+├── requirements.txt
+└── README.md
+```
 
 ---
 
-## Model Performance & Benchmarks
+## 4. Installation & Usage
 
-Location of ROC curve: docs/figures/roc_curve.png  
-AUC Score: 0.961
+### Install dependencies
+```
+pip install -r requirements.txt
+```
+
+### Train the model
+```
+python src/train_ids_pipeline.py
+```
+
+### Run the API
+```
+uvicorn src.api_main:app --reload --port 8000
+```
+
+### Run the dashboard
+```
+python src/dashboard_app.py
+```
+
+### Run tests
+```
+pytest
+```
+
+---
+
+## 5. Model Performance
 
 | Metric       | Score |
 |--------------|-------|
 | Accuracy     | 0.94  |
 | Precision    | 0.95  |
 | Recall       | 0.93  |
-| F1-Score     | 0.94  |
+| F1 Score     | 0.94  |
 | ROC-AUC      | 0.961 |
+
+ROC curve file: `docs/figures/roc_curve.png`
 
 ---
 
-## System Architecture Diagram (Mermaid)
+## 6. System Architecture Diagram
 
 ```mermaid
 flowchart LR
-    A[Raw Dataset <br> nsl_kdd_train_binary.csv] --> B[Preprocessing <br> data_preprocessing.py]
-    B --> C[Model Training <br> train_ids_pipeline.py]
+    A[NSL-KDD Dataset] --> B[Preprocessing Pipeline]
+    B --> C[Model Training <br> Random Forest]
     C --> D[Saved Model <br> intrusion_model.pkl]
-    D --> E[FastAPI Service <br> api_main.py]
-    E --> F[Dashboard <br> dashboard_app.py]
+    D --> E[FastAPI /predict Endpoint]
+    E --> F[Dashboard Application]
 ```
 
 ---
 
-## Data Pipeline Diagram (Mermaid)
+## 7. Data Pipeline Diagram
 
 ```mermaid
 flowchart LR
-    A[Load Data] --> B[Clean & Encode]
-    B --> C[Train/Test Split]
+    A[Load Data] --> B[Clean and Encode]
+    B --> C[Split into Train/Test]
     C --> D[Train Random Forest]
     D --> E[Evaluate Metrics]
     E --> F[Save Model Artifact]
@@ -153,11 +159,9 @@ flowchart LR
 
 ---
 
-## API Example
+## 8. API Example
 
-### POST /predict
-
-Input:
+### Request
 ```json
 {
   "duration": 0,
@@ -172,7 +176,7 @@ Input:
 }
 ```
 
-Output:
+### Response
 ```json
 {
   "prediction": "attack",
@@ -182,40 +186,26 @@ Output:
 
 ---
 
-## Model Card Summary
+## 9. My Individual Contributions
 
-See: MODEL_CARD.md  
-Includes:
-- Intended use
-- Dataset
-- Evaluation
-- Limitations
-- Ethical considerations
+This entire IDS project was designed and implemented by **Ibrahim Akintunde Akinyera**.  
+Key contributions include:
 
----
+- Defining the system architecture  
+- Engineering and preprocessing the NSL-KDD dataset  
+- Developing the model training pipeline  
+- Evaluating model metrics and producing ROC curve  
+- Building the FastAPI prediction service  
+- Implementing dashboard for CSV-based intrusion analysis  
+- Creating Docker deployment configuration  
+- Writing unit tests and CI pipeline  
+- Preparing full documentation, diagrams, and evidence  
 
-## My Individual Contributions
-
-This entire ML-based IDS was designed and implemented by Ibrahim Akintunde Akinyera.
-
-My individual contributions include:
-
-- Designing the architecture and pipeline
-- Implementing preprocessing and feature engineering
-- Training and tuning the Random Forest model
-- Generating full evaluation metrics and ROC curve
-- Building the training script and saving the model
-- Implementing the FastAPI inference service
-- Building the interactive dashboard
-- Adding unit tests and setting up CI workflow
-- Creating architecture diagrams and full documentation
-- Preparing the model card and technical evidence
-
-This demonstrates end-to-end capability in machine learning, cybersecurity, software engineering, and system design.
+This demonstrates end-to-end engineering capability in machine learning, cybersecurity, deployment, and documentation.
 
 ---
 
-## License
+## 10. License
 MIT License
 
 ## Author
