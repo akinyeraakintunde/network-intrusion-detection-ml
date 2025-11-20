@@ -1,149 +1,74 @@
-<div align="center">
-
 # Machine Learning–Based Network Intrusion Detection System (IDS)
 
-**Evidence 3 – UK Global Talent Visa (Technical Contribution)**  
+### Evidence 3 – UK Global Talent Visa (Technical Contribution)  
 **Author: Ibrahim Akintunde Akinyera**
 
-[![Python](https://img.shields.io/badge/Built%20with-Python-3776AB?logo=python&logoColor=white)](https://www.python.org/)
-[![ML](https://img.shields.io/badge/Machine%20Learning-RandomForest-0B7285)]()
-[![Dataset](https://img.shields.io/badge/Dataset-NSL--KDD-5C7CFA)]()
-[![Status](https://img.shields.io/badge/Repository-Production--Style-brightgreen)]()
+This repository contains a production-style machine learning Intrusion Detection System (IDS) designed to classify network activity as either normal or malicious. It is built using the NSL-KDD dataset and demonstrates end-to-end capability across data preprocessing, feature engineering, model training, evaluation, and deployment.
 
-</div>
+The project forms part of my **Evidence 3 – Technical Contribution** for the UK Global Talent Visa and highlights my expertise in machine learning, cybersecurity analytics, and Python-based engineering.
 
 ---
 
 ## 1. Project Overview
 
-This repository contains a production-style machine learning Intrusion Detection System (IDS) designed to classify network traffic as either:
+The system analyses structured network traffic records and classifies each entry into:
 
-- **Normal traffic (0)**
-- **Attack or malicious activity (1)**
+- **0** – Normal traffic  
+- **1** – Attack / intrusion  
 
-The project is built using the **NSL-KDD dataset**, a recognised benchmark dataset for evaluating intrusion detection models.  
-It demonstrates end-to-end capability in cybersecurity analytics, data engineering, and machine learning model development.
+The solution includes:
 
-This repository supports **Evidence 3 (Technical Contribution)** for the **UK Global Talent Visa**, showcasing:
+- Preprocessing and encoding of the NSL-KDD dataset  
+- Training of a RandomForest-based intrusion detection model  
+- Persisting a production-ready model (`intrusion_model.pkl`)  
+- Optional interactive dashboard for live scoring  
 
-- End-to-end ML engineering  
-- Cybersecurity and risk analytics expertise  
-- Work with real intrusion-detection datasets  
-- Clear documentation and reproducible processes  
+This repository demonstrates practical technical work with real-world data and showcases end-to-end engineering ability.
 
 ---
 
 ## 2. Key Features
 
-- RandomForest model trained specifically for intrusion detection  
-- Fully preprocessed and encoded training and testing datasets  
-- Binary classification approach for operational simplicity  
-- Clear separation between data, source code, and models  
-- Ready for integration with dashboards or monitoring systems  
-- Aligned to Tech Nation’s standards of technical contribution  
+- Full ML training pipeline using scikit-learn  
+- Cleaned and encoded binary dataset (normal vs attack)  
+- RandomForest classifier trained on NSL-KDD  
+- Clear separation of `data/`, `src/`, and `docs/`  
+- Reproducible results through `train_ids_pipeline.py`  
+- Dashboard for uploading CSV files and obtaining predictions  
+- Documentation aligned with Tech Nation evidence requirements  
 
 ---
 
-## 3. System Architecture
+## 3. Dataset: NSL-KDD (Binary Reformatted Version)
 
-```
-Raw NSL-KDD Data
-       ↓
-Data Ingestion and Preprocessing
-       ↓
-One-Hot Encoding and Label Conversion
-       ↓
-Model Training (RandomForest)
-       ↓
-Model Evaluation and Validation
-       ↓
-Saved Model (intrusion_model.pkl)
-       ↓
-Dashboard or API Layer (optional)
-```
+The project uses the **NSL-KDD** dataset, one of the most widely used datasets for network intrusion detection research.
 
-Supporting diagrams are available in:
+The dataset has been:
 
-```
-docs/figures/
-  ids_architecture.png
-  ids_pipeline.png
-  ids_dashboard.png
-```
-
----
-
-## 4. Dataset: NSL-KDD (Binary Classification)
-
-The dataset has been cleaned and converted into a binary classification problem:
-
-- `0` = Normal traffic  
-- `1` = Attack (DoS, Probe, R2L, U2R grouped together)
-
-The following CSV files are included:
+1. Loaded from raw NSL-KDD text files  
+2. Cleaned, normalised, and converted into CSV  
+3. Transformed into a binary classification problem:  
+   - `0` = Normal  
+   - `1` = Attack  
+4. Fully encoded into numerical features  
+5. Exported into ready-to-train CSV files:
 
 ```
 data/
-  nsl_kdd_train_binary.csv   (Training dataset with binary labels)
-  nsl_kdd_test_binary.csv    (Testing dataset with binary labels)
-  intrusion_model.pkl        (Trained RandomForest IDS model)
+  nsl_kdd_train_binary.csv
+  nsl_kdd_test_binary.csv
+  intrusion_model.pkl
 ```
 
-Each dataset contains fully encoded features and the `binary_label` target column.
-
----
-
-## 5. Model Training and Evaluation
-
-The model is trained using `RandomForestClassifier` with the following parameters:
+The target column for training and inference is:
 
 ```
-n_estimators = 200
-max_depth = None
-random_state = 42
-n_jobs = -1
-```
-
-### Training Steps:
-1. Load binary-labeled CSV datasets  
-2. Separate features and target label  
-3. Train the RandomForest model  
-4. Evaluate performance on the official NSL-KDD test set  
-5. Export the trained model  
-
-### Example Output (Binary Classification)
-- **Accuracy:** ~0.78  
-- **Task:** Distinguishing normal vs attack traffic  
-
-This performance is typical for NSL-KDD without hyperparameter tuning.
-
----
-
-## 6. How to Run the Project
-
-### Installation
-
-```
-pip install -r requirements.txt
-```
-
-### Re-Train the Model
-
-```
-python src/train_ids_pipeline.py
-```
-
-### Optional: Run Dashboard
-
-If you have implemented a Streamlit dashboard:
-
-```
-streamlit run src/dashboard_app.py
+binary_label
 ```
 
 ---
 
-## 7. Repository Structure
+## 4. Repository Structure
 
 ```
 network-intrusion-detection-ml/
@@ -151,39 +76,113 @@ network-intrusion-detection-ml/
     nsl_kdd_train_binary.csv
     nsl_kdd_test_binary.csv
     intrusion_model.pkl
+
   src/
-    train_ids_pipeline.py
-    data_preprocessing.py
-    dashboard_app.py
-    network_intrusion_detection.py
+    train_ids_pipeline.py         # End-to-end model training pipeline
+    data_preprocessing.py         # Preprocessing and encoding logic
+    model_training.py             # Supporting training logic
+    dashboard_app.py              # Optional dashboard for predictions
+
   docs/
     figures/
       ids_architecture.png
       ids_pipeline.png
       ids_dashboard.png
+
+  notebooks/
+    exploration_intrusion_ids.ipynb
+
+  README.md
   TECH_NATION_EVIDENCE.md
   requirements.txt
   LICENSE
-  README.md
+```
+
+This layout mirrors production-grade ML repositories and enables easy assessment, reproducibility, and deployment.
+
+---
+
+## 5. Machine Learning Pipeline
+
+### a) Data Preprocessing  
+Implemented in `data_preprocessing.py` and the exploratory notebook:
+
+- Loading of NSL-KDD datasets  
+- Handling missing values and inconsistencies  
+- Categorical encoding using one-hot encoding  
+- Conversion to binary labels  
+- Export of final training and testing datasets  
+
+### b) Model Training  
+`train_ids_pipeline.py` performs:
+
+- Feature and target separation  
+- Training a RandomForest classifier with 200 estimators  
+- Model evaluation on the official NSL-KDD test split  
+- Exporting model file using `joblib.dump()`  
+
+### c) Model Persistence  
+The trained model is saved as:
+
+```
+data/intrusion_model.pkl
+```
+
+### d) Prediction Dashboard  
+`dashboard_app.py` provides:
+
+- CSV upload interface  
+- Automatic preprocessing of uploaded data  
+- Live predictions using `intrusion_model.pkl`  
+- Usable for security monitoring or analyst workflows  
+
+---
+
+## 6. Running the Project
+
+### Step 1: Install Dependencies
+```
+pip install -r requirements.txt
+```
+
+### Step 2: Train or Re-train the Model
+```
+python src/train_ids_pipeline.py
+```
+
+### Step 3: Launch the Dashboard (Optional)
+```
+streamlit run src/dashboard_app.py
 ```
 
 ---
 
-## 8. Tech Nation Justification
+## 7. Tech Nation Relevance – Evidence 3 (Technical Contribution)
 
 This repository demonstrates:
-- Advanced capability in machine learning model development  
-- Technical work in cybersecurity and network risk analysis  
-- End-to-end ownership of design, implementation, and documentation  
-- Production-grade structure appropriate for a technical portfolio  
-- Strong alignment with UK Global Talent “Technical Contribution” criteria  
+
+**1. End-to-end engineering ability**  
+I designed and implemented the entire machine learning pipeline independently, including preprocessing, model development, and deployment components.
+
+**2. Cybersecurity expertise**  
+The work applies ML techniques directly to intrusion detection challenges using a recognised security dataset.
+
+**3. Production-level practices**  
+The repository structure reflects real-world engineering, with clean separation of data, code, and model artefacts.
+
+**4. Reproducibility and clarity**  
+Assessors can run the training script and obtain identical results using the included datasets and model pipeline.
+
+**5. Demonstrated impact**  
+The dashboard shows how the model can be deployed for operational use in security monitoring environments.
 
 ---
 
-## 9. Contact
+## 8. Author
 
 **Ibrahim Akintunde Akinyera**  
-GitHub: https://github.com/akinyeraakintunde  
-LinkedIn: https://www.linkedin.com/in/ibrahimakinyera/  
+Machine Learning Engineer | Cybersecurity & Risk Analytics  
 
----
+GitHub: https://github.com/akinyeraakintunde  
+Portfolio: https://akinyeraakintunde.github.io/Ibrahim-Akinyera  
+LinkedIn: https://www.linkedin.com/in/ibrahimakinyera/
