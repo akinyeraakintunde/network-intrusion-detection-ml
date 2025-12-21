@@ -188,3 +188,10 @@ def predict(request: PredictionRequest):
         predictions=results,
         model_version="v1.0.0",
     )
+    @app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "service": "network-intrusion-detection",
+        "timestamp": datetime.utcnow().isoformat()
+    }
