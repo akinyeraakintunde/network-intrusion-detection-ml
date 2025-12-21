@@ -1,3 +1,7 @@
+fastapi
+uvicorn[standard]
+pydantic
+
 # ---- Web API ----
 fastapi
 uvicorn[standard]
@@ -15,3 +19,14 @@ seaborn
 
 # ---- Optional demo UI ----
 streamlit
+
+fastapi
+uvicorn[standard]
+pydantic
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+streamlit
+joblib
