@@ -1,195 +1,206 @@
 from __future__ import annotations
 
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from typing import List, Dict, Any
 from pathlib import Path
-from datetime import datetime
+from typing import Any, Dict, List, Optional
+
 import joblib
+import numpy as np
 import pandas as pd
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel, Field
 
 
-# ----------------------------
-# Paths
-# ----------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent  # project root
+# -------------------------
+# Paths / config
+# -------------------------
+BASE_DIR = Path(__file__).resolve().parent.parent  # repo_root/src -> repo_root
 DATA_DIR = BASE_DIR / "data"
+
 MODEL_PATH = DATA_DIR / "intrusion_model.pkl"
 
-
-# ----------------------------
-# Request / Response Schemas
-# ----------------------------
-class PredictRequest(BaseModel):
-    """
-    Flexible payload:
-    - features: a single record of numeric features
-    - records: a list of records (batch)
-    Provide either 'features' or 'records'.
-    """
-    features: Optional[Dict[str, float]] = Field(default=None, examples=[{"src_bytes": 200, "dst_bytes": 7000, "count": 4, "srv_count": 6}])
-    records: Optional[List[Dict[str, float]]] = Field(default=None, examples=[[{"src_bytes": 200, "dst_bytes": 7000, "count": 4, "srv_count": 6}]])
+# If your model uses 0=normal, 1=attack (binary)
+LABEL_MAP = {0: "normal", 1: "attack"}
 
 
-class PredictItem(BaseModel):
-    index: int
-    prediction: str
-    confidence: float
-    score_attack: float
-
-
-class PredictResponse(BaseModel):
-    predictions: List[PredictItem]
-    model_version: str = "v1.0.0"
-    note: str
-
-
-# ----------------------------
+# -------------------------
 # App
-# ----------------------------
+# -------------------------
 app = FastAPI(
     title="Network Intrusion Detection (Live Demo)",
+    description="FastAPI demo endpoint for intrusion classification.",
     version="1.0.0",
-    description="FastAPI demo endpoint for intrusion classification. (Rules/heuristic fallback if model not available.)",
 )
 
-_model: Any = None
-_feature_order: Optional[List[str]] = None
+_model = None  # loaded at startup
 
 
-def _safe_float(x: Any) -> float:
-    try:
-        return float(x)
-    except Exception:
-        return 0.0
+# -------------------------
+# Schemas
+# -------------------------
+class PredictionRequest(BaseModel):
+    # Accept either:
+    # 1) single feature dict -> { "src_bytes": 200, ... }
+    # 2) list of feature dicts -> [ {...}, {...} ]
+    features: Optional[Dict[str, float]] = Field(default=None, description="Single record features (dict).")
+    records: Optional[List[Dict[str, float]]] = Field(default=None, description="Multiple records features (list).")
 
 
-def _get_records(payload: PredictRequest) -> List[Dict[str, float]]:
-    if payload.records and len(payload.records) > 0:
-        return payload.records
-    if payload.features and len(payload.features) > 0:
-        return [payload.features]
-    raise HTTPException(status_code=422, detail="Provide either 'features' (single record) or 'records' (batch).")
+class PredictionItem(BaseModel):
+    index: int
+    label: int
+    prediction: str
+    confidence: float
+    score_attack: Optional[float] = None
 
 
-def _heuristic_score(record: Dict[str, float]) -> float:
+class PredictionResponse(BaseModel):
+    predictions: List[PredictionItem]
+    model_version: str = "v1.0.0"
+    note: str = "Rules/heuristic placeholder until model wiring is verified."
+
+
+# -------------------------
+# Helpers
+# -------------------------
+def _load_model() -> Any:
+    if not MODEL_PATH.exists():
+        raise RuntimeError(f"Model file not found at: {MODEL_PATH}")
+    return joblib.load(MODEL_PATH)
+
+
+def _infer_feature_order(model: Any, df: pd.DataFrame) -> pd.DataFrame:
     """
-    Simple placeholder heuristic: higher bytes + higher counts => more suspicious.
-    Replace with your trained model scoring later.
+    Align dataframe columns to the model's expected feature order if available.
+    If model has feature_names_in_ (sklearn), we reindex to that.
+    Otherwise we leave columns as-is.
     """
-    src_bytes = _safe_float(record.get("src_bytes", 0))
-    dst_bytes = _safe_float(record.get("dst_bytes", 0))
-    count = _safe_float(record.get("count", 0))
-    srv_count = _safe_float(record.get("srv_count", 0))
+    if hasattr(model, "feature_names_in_"):
+        cols = list(getattr(model, "feature_names_in_"))
+        # add missing columns as zeros
+        for c in cols:
+            if c not in df.columns:
+                df[c] = 0.0
+        # drop extras and reorder
+        df = df.reindex(columns=cols, fill_value=0.0)
 
-    score = 0.0
-    score += min(src_bytes / 5000.0, 1.0) * 0.35
-    score += min(dst_bytes / 20000.0, 1.0) * 0.35
-    score += min(count / 100.0, 1.0) * 0.15
-    score += min(srv_count / 100.0, 1.0) * 0.15
-    return max(0.0, min(score, 1.0))
-
-
-def _load_model_if_present() -> None:
-    global _model, _feature_order
-    if MODEL_PATH.exists():
-        _model = joblib.load(MODEL_PATH)
-
-        # Optional: if you saved feature order alongside the model, set it here.
-        # _feature_order = ["src_bytes", "dst_bytes", "count", "srv_count", ...]
-        _feature_order = None
+    # ensure numeric
+    df = df.apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    return df
 
 
+def _build_df(payload: PredictionRequest) -> pd.DataFrame:
+    if payload.records:
+        rows = payload.records
+    elif payload.features:
+        rows = [payload.features]
+    else:
+        raise ValueError("Provide either 'features' (dict) or 'records' (list of dicts).")
+
+    df = pd.DataFrame(rows).fillna(0.0)
+    return df
+
+
+def _predict(model: Any, df: pd.DataFrame) -> List[PredictionItem]:
+    df = _infer_feature_order(model, df)
+
+    # Prefer predict_proba for confidence
+    if hasattr(model, "predict_proba"):
+        proba = model.predict_proba(df)
+        # If binary, proba shape -> (n,2)
+        labels = np.argmax(proba, axis=1).astype(int)
+        conf = np.max(proba, axis=1).astype(float)
+
+        score_attack = None
+        if proba.shape[1] >= 2:
+            score_attack = proba[:, 1].astype(float)
+
+        items: List[PredictionItem] = []
+        for i, y in enumerate(labels):
+            items.append(
+                PredictionItem(
+                    index=i,
+                    label=int(y),
+                    prediction=LABEL_MAP.get(int(y), str(int(y))),
+                    confidence=float(conf[i]),
+                    score_attack=float(score_attack[i]) if score_attack is not None else None,
+                )
+            )
+        return items
+
+    # Fallback: predict only (confidence unknown)
+    preds = model.predict(df)
+    items = []
+    for i, y in enumerate(preds):
+        yi = int(y)
+        items.append(
+            PredictionItem(
+                index=i,
+                label=yi,
+                prediction=LABEL_MAP.get(yi, str(yi)),
+                confidence=0.0,
+                score_attack=None,
+            )
+        )
+    return items
+
+
+# -------------------------
+# Startup
+# -------------------------
 @app.on_event("startup")
-def startup_event():
-    _load_model_if_present()
+def startup_event() -> None:
+    global _model
+    _model = _load_model()
 
 
+# -------------------------
+# Routes
+# -------------------------
 @app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "model_loaded": _model is not None,
-        "model_path": str(MODEL_PATH),
-    }
+def health() -> Dict[str, str]:
+    return {"status": "ok"}
+
+
+@app.post("/predict", response_model=PredictionResponse)
+def predict(payload: PredictionRequest) -> PredictionResponse:
+    global _model
+    if _model is None:
+        raise HTTPException(status_code=500, detail="Model not loaded.")
+
+    try:
+        df = _build_df(payload)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        preds = _predict(_model, df)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Prediction error: {e}")
+
+    # small friendly note for demo
+    note = "Model is wired. If you see stable predictions, next step is to validate on held-out test set and add monitoring."
+    return PredictionResponse(predictions=preds, note=note)
 
 
 @app.get("/demo")
-def demo():
+def demo() -> Dict[str, Any]:
     """
-    Human-friendly summary endpoint for non-technical viewers.
+    Non-technical, pretty summary endpoint.
     """
     return {
-        "project": "Network Intrusion Detection (Live Demo)",
-        "what_it_does": "Scores network traffic-like features and returns a risk classification (benign vs malicious).",
+        "product": "Network Intrusion Detection (Live Demo)",
+        "what_it_does": "Classifies traffic-like features as normal vs attack.",
         "how_to_try": {
             "swagger_ui": "/docs",
-            "post_predict": {
-                "endpoint": "/predict",
-                "example_body": {
-                    "features": {"src_bytes": 200, "dst_bytes": 7000, "count": 4, "srv_count": 6}
-                },
+            "predict_endpoint": "POST /predict",
+            "example_payload": {
+                "features": {
+                    "src_bytes": 200,
+                    "dst_bytes": 7000,
+                    "count": 4,
+                    "srv_count": 6,
+                }
             },
         },
-        "notes": [
-            "If a trained model file exists at data/intrusion_model.pkl, the API will use it.",
-            "If not, it uses a simple heuristic scorer as a placeholder demo.",
-        ],
+        "status": "ok",
     }
-
-
-@app.post("/predict", response_model=PredictResponse)
-def predict(payload: PredictRequest):
-    records = _get_records(payload)
-
-    results: List[PredictItem] = []
-    threshold = 0.5
-
-    # If you have a trained model that supports predict_proba, you can wire it here.
-    if _model is not None:
-        try:
-            # Build matrix in a stable column order if you have it; otherwise use keys sorted
-            import pandas as pd  # local import to keep startup lighter
-
-            if _feature_order:
-                rows = [{k: _safe_float(r.get(k, 0.0)) for k in _feature_order} for r in records]
-                df = pd.DataFrame(rows, columns=_feature_order)
-            else:
-                # fallback: union of keys, sorted
-                all_keys = sorted({k for r in records for k in r.keys()})
-                rows = [{k: _safe_float(r.get(k, 0.0)) for k in all_keys} for r in records]
-                df = pd.DataFrame(rows, columns=all_keys)
-
-            if hasattr(_model, "predict_proba"):
-                proba = _model.predict_proba(df)
-                # assume positive class is column 1 if binary
-                attack_scores = proba[:, 1] if proba.shape[1] > 1 else proba[:, 0]
-            else:
-                # fallback to predict output, map to confidence-ish
-                preds = _model.predict(df)
-                attack_scores = [1.0 if int(p) == 1 else 0.0 for p in preds]
-
-            for i, s in enumerate(attack_scores):
-                s = float(s)
-                label = "malicious" if s >= threshold else "benign"
-                conf = s if label == "malicious" else (1.0 - s)
-                results.append(PredictItem(index=i, prediction=label, confidence=conf, score_attack=s))
-
-            return PredictResponse(
-                predictions=results,
-                note="Using trained model from data/intrusion_model.pkl",
-            )
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Model inference failed: {str(e)}")
-
-    # Heuristic fallback
-    for i, r in enumerate(records):
-        s = _heuristic_score(r)
-        label = "malicious" if s >= threshold else "benign"
-        conf = s if label == "malicious" else (1.0 - s)
-        results.append(PredictItem(index=i, prediction=label, confidence=conf, score_attack=s))
-
-    return PredictResponse(
-        predictions=results,
-        note="Using heuristic demo scorer (wire to trained model next).",
-    )
