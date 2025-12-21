@@ -1,291 +1,193 @@
-"""
-Network Intrusion Detection API (FastAPI)
-
-- Loads a trained model from: data/intrusion_model.pkl
-- Exposes:
-  - GET  /health
-  - POST /predict   (accepts {"features": {...}} or a single flat JSON object)
-  - GET  /demo      (non-technical friendly summary + sample request)
-
-Run locally:
-  uvicorn src.api_main:app --reload --host 0.0.0.0 --port 8000
-"""
-
 from __future__ import annotations
 
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
-from datetime import datetime
-
-import joblib
-import pandas as pd
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
+from typing import Dict, List, Optional, Any
+from pathlib import Path
+import joblib
 
 
-# -----------------------------
-# Paths / config
-# -----------------------------
-BASE_DIR = Path(__file__).resolve().parent.parent
+# ----------------------------
+# Paths
+# ----------------------------
+BASE_DIR = Path(__file__).resolve().parent.parent  # project root
 DATA_DIR = BASE_DIR / "data"
-
 MODEL_PATH = DATA_DIR / "intrusion_model.pkl"
 
-# Optional helper file (recommended): a JSON list of model feature names.
-# Example: data/feature_columns.json  -> ["src_bytes","dst_bytes","count","srv_count",...]
-FEATURE_COLUMNS_PATH = DATA_DIR / "feature_columns.json"
+
+# ----------------------------
+# Request / Response Schemas
+# ----------------------------
+class PredictRequest(BaseModel):
+    """
+    Flexible payload:
+    - features: a single record of numeric features
+    - records: a list of records (batch)
+    Provide either 'features' or 'records'.
+    """
+    features: Optional[Dict[str, float]] = Field(default=None, examples=[{"src_bytes": 200, "dst_bytes": 7000, "count": 4, "srv_count": 6}])
+    records: Optional[List[Dict[str, float]]] = Field(default=None, examples=[[{"src_bytes": 200, "dst_bytes": 7000, "count": 4, "srv_count": 6}]])
 
 
-# -----------------------------
-# FastAPI app
-# -----------------------------
+class PredictItem(BaseModel):
+    index: int
+    prediction: str
+    confidence: float
+    score_attack: float
+
+
+class PredictResponse(BaseModel):
+    predictions: List[PredictItem]
+    model_version: str = "v1.0.0"
+    note: str
+
+
+# ----------------------------
+# App
+# ----------------------------
 app = FastAPI(
     title="Network Intrusion Detection (Live Demo)",
     version="1.0.0",
-    description=(
-        "FastAPI demo endpoint for intrusion classification.\n\n"
-        "POST /predict with feature values to get a prediction.\n"
-        "This service supports a simplified demo payload like:\n"
-        '{ "features": { "src_bytes": 200, "dst_bytes": 7000, "count": 4, "srv_count": 6 } }'
-    ),
+    description="FastAPI demo endpoint for intrusion classification. (Rules/heuristic fallback if model not available.)",
 )
 
-MODEL: Any = None
-FEATURE_COLUMNS: Optional[List[str]] = None
+_model: Any = None
+_feature_order: Optional[List[str]] = None
 
 
-# -----------------------------
-# Schemas
-# -----------------------------
-class PredictionRequest(BaseModel):
-    """
-    Preferred request shape:
-      { "features": { "src_bytes": 200, "dst_bytes": 7000, ... } }
-
-    Also supported (flat JSON):
-      { "src_bytes": 200, "dst_bytes": 7000, ... }
-    """
-    features: Dict[str, float] = Field(default_factory=dict, description="Feature-name -> numeric value map")
-
-
-class PredictionItem(BaseModel):
-    prediction: str = Field(..., description="Human label: 'normal' or 'attack'")
-    score: float = Field(..., ge=0.0, le=1.0, description="Probability/confidence for the positive class (attack)")
-    threshold: float = Field(0.5, description="Decision threshold used to convert score -> label")
-
-
-class PredictionResponse(BaseModel):
-    result: PredictionItem
-    model_version: str = "v1.0.0"
-    timestamp_utc: str
-    inputs_used: Dict[str, float]
-    notes: List[str] = Field(default_factory=list)
-
-
-# -----------------------------
-# Helpers
-# -----------------------------
-def _load_feature_columns() -> Optional[List[str]]:
-    """Load feature column names (recommended) from data/feature_columns.json if present."""
+def _safe_float(x: Any) -> float:
     try:
-        if FEATURE_COLUMNS_PATH.exists():
-            import json
-            cols = json.loads(FEATURE_COLUMNS_PATH.read_text(encoding="utf-8"))
-            if isinstance(cols, list) and all(isinstance(x, str) for x in cols):
-                return cols
+        return float(x)
     except Exception:
-        # non-fatal
-        return None
-    return None
+        return 0.0
 
 
-def _build_feature_dataframe(features: Dict[str, float]) -> pd.DataFrame:
+def _get_records(payload: PredictRequest) -> List[Dict[str, float]]:
+    if payload.records and len(payload.records) > 0:
+        return payload.records
+    if payload.features and len(payload.features) > 0:
+        return [payload.features]
+    raise HTTPException(status_code=422, detail="Provide either 'features' (single record) or 'records' (batch).")
+
+
+def _heuristic_score(record: Dict[str, float]) -> float:
     """
-    Build a single-row dataframe for model inference.
-    If FEATURE_COLUMNS is known, align to it and fill missing with 0.0.
-    If unknown, use whatever keys we received (best-effort).
+    Simple placeholder heuristic: higher bytes + higher counts => more suspicious.
+    Replace with your trained model scoring later.
     """
-    if not isinstance(features, dict) or not features:
-        raise ValueError("No features provided. Provide a JSON payload with numeric feature values.")
+    src_bytes = _safe_float(record.get("src_bytes", 0))
+    dst_bytes = _safe_float(record.get("dst_bytes", 0))
+    count = _safe_float(record.get("count", 0))
+    srv_count = _safe_float(record.get("srv_count", 0))
 
-    # Ensure numeric
-    cleaned: Dict[str, float] = {}
-    for k, v in features.items():
-        try:
-            cleaned[str(k)] = float(v)
-        except Exception:
-            raise ValueError(f"Feature '{k}' must be numeric. Got: {v!r}")
-
-    if FEATURE_COLUMNS:
-        row = {col: float(cleaned.get(col, 0.0)) for col in FEATURE_COLUMNS}
-        df = pd.DataFrame([row], columns=FEATURE_COLUMNS)
-    else:
-        df = pd.DataFrame([cleaned])
-
-    return df
+    score = 0.0
+    score += min(src_bytes / 5000.0, 1.0) * 0.35
+    score += min(dst_bytes / 20000.0, 1.0) * 0.35
+    score += min(count / 100.0, 1.0) * 0.15
+    score += min(srv_count / 100.0, 1.0) * 0.15
+    return max(0.0, min(score, 1.0))
 
 
-def _get_attack_probability(model: Any, df: pd.DataFrame) -> float:
-    """
-    Returns attack probability score in [0,1].
-    Tries predict_proba first, then decision_function as fallback.
-    """
-    # 1) predict_proba (preferred)
-    if hasattr(model, "predict_proba"):
-        proba = model.predict_proba(df)
-        # If binary classifier: proba[0][1] typically = positive class
-        if hasattr(proba, "shape") and proba.shape[1] >= 2:
-            return float(proba[0][1])
-        return float(proba[0][0])
+def _load_model_if_present() -> None:
+    global _model, _feature_order
+    if MODEL_PATH.exists():
+        _model = joblib.load(MODEL_PATH)
 
-    # 2) decision_function fallback -> convert to pseudo-prob via sigmoid
-    if hasattr(model, "decision_function"):
-        import math
-        score = float(model.decision_function(df)[0])
-        return 1.0 / (1.0 + math.exp(-score))
-
-    # 3) last resort: predict -> 0/1
-    if hasattr(model, "predict"):
-        pred = int(model.predict(df)[0])
-        return 1.0 if pred == 1 else 0.0
-
-    raise RuntimeError("Model does not support predict_proba, decision_function, or predict.")
+        # Optional: if you saved feature order alongside the model, set it here.
+        # _feature_order = ["src_bytes", "dst_bytes", "count", "srv_count", ...]
+        _feature_order = None
 
 
-def _normalize_request(payload: Union[PredictionRequest, Dict[str, Any]]) -> Dict[str, float]:
-    """
-    Accepts either:
-      - PredictionRequest ({"features": {...}})
-      - flat dict ({"src_bytes":..., "dst_bytes":...})
-    and returns a normalized features dict.
-    """
-    if isinstance(payload, PredictionRequest):
-        if payload.features:
-            return payload.features
-        return {}
-
-    # flat dict support
-    if isinstance(payload, dict):
-        # If "features" is present, use it.
-        if "features" in payload and isinstance(payload["features"], dict):
-            return payload["features"]
-        # Otherwise treat entire dict as features
-        return {k: payload[k] for k in payload.keys()}
-
-    return {}
-
-
-# -----------------------------
-# Startup
-# -----------------------------
 @app.on_event("startup")
-def startup() -> None:
-    global MODEL, FEATURE_COLUMNS
-
-    if not MODEL_PATH.exists():
-        # Keep app running but clearly indicate missing model.
-        # This makes /health work, and /predict gives a friendly error.
-        MODEL = None
-    else:
-        MODEL = joblib.load(MODEL_PATH)
-
-    FEATURE_COLUMNS = _load_feature_columns()
+def startup_event():
+    _load_model_if_present()
 
 
-# -----------------------------
-# Routes
-# -----------------------------
 @app.get("/health")
-def health() -> Dict[str, Any]:
+def health():
     return {
         "status": "ok",
-        "model_loaded": MODEL is not None,
-        "feature_columns_loaded": bool(FEATURE_COLUMNS),
-        "timestamp_utc": datetime.utcnow().isoformat() + "Z",
+        "model_loaded": _model is not None,
+        "model_path": str(MODEL_PATH),
     }
 
 
 @app.get("/demo")
-def demo() -> Dict[str, Any]:
+def demo():
     """
-    A friendly endpoint recruiters can open quickly.
+    Human-friendly summary endpoint for non-technical viewers.
     """
     return {
-        "what_this_is": "A live FastAPI demo for Network Intrusion Detection scoring.",
-        "how_to_use": [
-            "Open /docs to try it in Swagger UI.",
-            "Call POST /predict with a JSON payload of numeric features.",
-        ],
-        "sample_request_body": {
-            "features": {"src_bytes": 200, "dst_bytes": 7000, "count": 4, "srv_count": 6}
+        "project": "Network Intrusion Detection (Live Demo)",
+        "what_it_does": "Scores network traffic-like features and returns a risk classification (benign vs malicious).",
+        "how_to_try": {
+            "swagger_ui": "/docs",
+            "post_predict": {
+                "endpoint": "/predict",
+                "example_body": {
+                    "features": {"src_bytes": 200, "dst_bytes": 7000, "count": 4, "srv_count": 6}
+                },
+            },
         },
-        "sample_curl": (
-            "curl -X POST 'http://localhost:8000/predict' "
-            "-H 'accept: application/json' -H 'Content-Type: application/json' "
-            "-d '{\"features\":{\"src_bytes\":200,\"dst_bytes\":7000,\"count\":4,\"srv_count\":6}}'"
-        ),
         "notes": [
-            "If feature_columns.json exists, missing features are auto-filled with 0.0.",
-            "If feature columns are not provided, the API uses received keys (best-effort).",
+            "If a trained model file exists at data/intrusion_model.pkl, the API will use it.",
+            "If not, it uses a simple heuristic scorer as a placeholder demo.",
         ],
     }
 
 
-@app.post("/predict", response_model=PredictionResponse)
-def predict(payload: Dict[str, Any]) -> PredictionResponse:
-    """
-    Accepts either:
-      {"features": {...}}
-    or a flat JSON dict:
-      {"src_bytes": 200, "dst_bytes": 7000, ...}
-    """
-    if MODEL is None:
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Model not loaded. Expected model file at: {MODEL_PATH}. "
-                "Ensure data/intrusion_model.pkl exists in the deployed environment."
-            ),
-        )
+@app.post("/predict", response_model=PredictResponse)
+def predict(payload: PredictRequest):
+    records = _get_records(payload)
 
-    features = _normalize_request(payload)
-    if not features:
-        raise HTTPException(
-            status_code=422,
-            detail="Invalid payload. Provide {'features': {...}} or a flat JSON object with numeric feature fields.",
-        )
-
-    try:
-        df = _build_feature_dataframe(features)
-        attack_proba = _get_attack_probability(MODEL, df)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Prediction failed: {str(e)}")
-
+    results: List[PredictItem] = []
     threshold = 0.5
-    label = "attack" if attack_proba >= threshold else "normal"
 
-    notes: List[str] = []
-    if FEATURE_COLUMNS:
-        notes.append("Feature alignment: request was aligned to feature_columns.json (missing filled with 0.0).")
-    else:
-        notes.append("Feature alignment: feature_columns.json not found; using provided keys (best-effort).")
+    # If you have a trained model that supports predict_proba, you can wire it here.
+    if _model is not None:
+        try:
+            # Build matrix in a stable column order if you have it; otherwise use keys sorted
+            import pandas as pd  # local import to keep startup lighter
 
-    return PredictionResponse(
-        result=PredictionItem(
-            prediction=label,
-            score=float(round(attack_proba, 6)),
-            threshold=threshold,
-        ),
-        timestamp_utc=datetime.utcnow().isoformat() + "Z",
-        inputs_used={k: float(v) for k, v in features.items()},
-        notes=notes,
+            if _feature_order:
+                rows = [{k: _safe_float(r.get(k, 0.0)) for k in _feature_order} for r in records]
+                df = pd.DataFrame(rows, columns=_feature_order)
+            else:
+                # fallback: union of keys, sorted
+                all_keys = sorted({k for r in records for k in r.keys()})
+                rows = [{k: _safe_float(r.get(k, 0.0)) for k in all_keys} for r in records]
+                df = pd.DataFrame(rows, columns=all_keys)
+
+            if hasattr(_model, "predict_proba"):
+                proba = _model.predict_proba(df)
+                # assume positive class is column 1 if binary
+                attack_scores = proba[:, 1] if proba.shape[1] > 1 else proba[:, 0]
+            else:
+                # fallback to predict output, map to confidence-ish
+                preds = _model.predict(df)
+                attack_scores = [1.0 if int(p) == 1 else 0.0 for p in preds]
+
+            for i, s in enumerate(attack_scores):
+                s = float(s)
+                label = "malicious" if s >= threshold else "benign"
+                conf = s if label == "malicious" else (1.0 - s)
+                results.append(PredictItem(index=i, prediction=label, confidence=conf, score_attack=s))
+
+            return PredictResponse(
+                predictions=results,
+                note="Using trained model from data/intrusion_model.pkl",
+            )
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Model inference failed: {str(e)}")
+
+    # Heuristic fallback
+    for i, r in enumerate(records):
+        s = _heuristic_score(r)
+        label = "malicious" if s >= threshold else "benign"
+        conf = s if label == "malicious" else (1.0 - s)
+        results.append(PredictItem(index=i, prediction=label, confidence=conf, score_attack=s))
+
+    return PredictResponse(
+        predictions=results,
+        note="Using heuristic demo scorer (wire to trained model next).",
     )
-
-
-# Optional local runner
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("src.api_main:app", host="0.0.0.0", port=8000, reload=True)
