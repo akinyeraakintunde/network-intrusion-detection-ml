@@ -36,7 +36,6 @@ This explains **why it’s simple now** and shows **clear roadmap thinking**.
 
 ## 3️⃣ Add Architecture explanation (text-first, no diagram yet)
 
-Add this section:
 
 ```md
 ## 🧠 Architecture Overview
