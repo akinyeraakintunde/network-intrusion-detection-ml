@@ -33,7 +33,18 @@ app = FastAPI(
     ),
     version="1.0.0",
 )
+class PredictRequest(BaseModel):
+    src_bytes: float
+    dst_bytes: float
+    count: float
+    srv_count: float
 
+
+class PredictResponse(BaseModel):
+    prediction: str
+    confidence: float
+    signals: Dict[str, Any]
+    inputs_used: Dict[str, Any]
 # -------------------------------------------------
 # Load model and feature schema at startup
 # -------------------------------------------------
