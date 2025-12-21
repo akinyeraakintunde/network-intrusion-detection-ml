@@ -1,32 +1,7 @@
 fastapi
 uvicorn[standard]
 pydantic
-
-# ---- Web API ----
-fastapi
-uvicorn[standard]
-pydantic
-
-# ---- ML / Data ----
-numpy
-pandas
-scikit-learn
-joblib
-
-# ---- Visualisation / notebooks (optional, but OK) ----
-matplotlib
-seaborn
-
-# ---- Optional demo UI ----
-streamlit
-
-fastapi
-uvicorn[standard]
-pydantic
 pandas
 numpy
 scikit-learn
-matplotlib
-seaborn
-streamlit
 joblib
